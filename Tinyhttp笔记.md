@@ -18,4 +18,10 @@
 
    ![](assets/feof1.png)
 
-   还有就是
+   还有就是fgets遇到EOF会立即置结束标记, 所以文本末尾要有换行, 否则feof会直接返回真.
+
+   ![](assets/feof2.png)
+
+
+
+2. 
