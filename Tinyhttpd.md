@@ -75,6 +75,18 @@ CGI有两部分组成：客户端显示的HTML、运行在服务器的CGI程序
 
 CGI程序继承了系统的环境变量。CGI环境变量在CGI程序启动初始化， 在结束时销毁。
 
+- 与请求相关的环境变量
+
+  | REQUEST_METHOD  | 服务器与CGI程序之间的传输方式                  |
+  | --------------- | ---------------------------------------------- |
+  | QUERY_STRING    | GET传输的信息                                  |
+  | CONTENT_LENGTH  | STDIO有效信息长度                              |
+  | CONTENT_TYPE    | 指示传来信息的MIME类型                         |
+  | CONTENT_FILE    | 使用Windows HTTPd/WinCGI标准，传送数据的文件名 |
+  | PATH_INFO       | 路径信息                                       |
+  | PATH_TRANSLATED | CJGI程序的完整路径名                           |
+  | SCRIPT_NAME     | 调用CGI程序名                                  |
+
 
 
 
