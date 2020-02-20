@@ -23,7 +23,7 @@ int startup(u_short *port) {
 	httpd = socket(PF_INET, SOCK_STREAM, 0);
 	if (httpd == -1) error_die("socket");
 	memset(&name, 0, sizeof(name));
-	name.sin_family = AF_IENT;
+	name.sin_family = AF_INET;
 	name.sin_port = htons(*port);
 	name.sin_addr.s_addr = htonl(INADDR_ANY);
 	// 端口复用
@@ -45,7 +45,7 @@ int startup(u_short *port) {
 	if (*port == 0) {
 		socklen_t namelen = sizeof(name);
 		if (getsockname(httpd, (struct sockaddr *)&name, &namelen) == -1) {
-			error_die("getsockname")
+			error_die("getsockname");
 		}
 		*port = ntohs(name.sin_port);
 	}
@@ -63,7 +63,7 @@ void accept_request(void *arg) {
 	char method[255];
 	char url[255];
 	char path[512];
-	sizse_t i, j;
+	size_t i, j;
 	struct stat st;
 	int cgi = 0;
 
@@ -78,11 +78,14 @@ void accept_request(void *arg) {
 	}
 	j = i;
 	method[j] = '\0';
+	
+	// debug method 
+	printf("method: %s\n", method);
 
 	// 不是GET或POST请求, 返回无效请求
 	// strcasecmp忽略大小写
 	if (strcasecmp(method, "GET") && strcasecmp(method, "POST")) {
-		unimplenmented(client);
+		unimplemented(client);
 		return;
 	}
 
@@ -94,11 +97,14 @@ void accept_request(void *arg) {
 	// 读取空格
 	while (ISspace(buf[j]) && (j < numchars)) ++j;
 	// 读取URL
-	while (ISspace(buf[j]) && (j < numchars) && (i < sizeof(url) - 1)) {
+	while (!ISspace(buf[j]) && (j < numchars) && (i < sizeof(url) - 1)) {
 		url[i] = buf[j];
 		++i, ++j;
 	}
 	url[i] = '\0';
+
+	// debug url
+	printf("url: %s\n", url);
 
 	// GET请求, 判断是否带有参数
 	if (strcasecmp(method, "GET") == 0) {
@@ -115,6 +121,10 @@ void accept_request(void *arg) {
 	sprintf(path, "htdocs%s", url);
 	if (path[strlen(path) - 1] == '/') 
 		strcat(path, "index.html");
+
+	// debug path
+	printf("path: %s\n", path);
+
 	// 获取文件信息失败
 	if (stat(path, &st) == -1) {
 		// 忽略请求头
@@ -141,6 +151,7 @@ void accept_request(void *arg) {
 
 // 执行CGI脚本, 执行结果通过STDOUT重定向到父进程, 父进程发给客户端
 void execute_cgi(int client, const char *path, const char *method, const char *query_string) {
+
 	char buf[1024];
 	int cgi_output[2];
 	int cgi_input[2];
@@ -158,7 +169,7 @@ void execute_cgi(int client, const char *path, const char *method, const char *q
 		while (numchars > 0 && strcmp("\n", buf))
 			numchars = get_line(client, buf, sizeof(buf));
 	else if (strcasecmp(method, "POST") == 0) {
-		numbers = get_line(client, buf, sizeof(buf));
+		numchars = get_line(client, buf, sizeof(buf));
 		while (numchars > 0 && strcmp("\n", buf)) {
 			buf[15] = '\0';
 			// 获取POST请求体长度
@@ -205,13 +216,13 @@ void execute_cgi(int client, const char *path, const char *method, const char *q
 		sprintf(meth_env, "REQUEST_METHOD=%s", method);
 		putenv(meth_env);
 		if (strcasecmp(method, "GET") == 0) {
-			sprintf(query_env, "QUERY_STRING%=s", query_string);
+			sprintf(query_env, "QUERY_STRING=%s", query_string);
 			putenv(query_env);
 		}else {
 			sprintf(length_env, "CONTENT_LENGTH=%d", content_length);
 			putenv(length_env);
 		}
-		execl(path, NULL);
+		execl(path, path, NULL);
 		exit(0);
 	} else {
 		close(cgi_output[1]);
@@ -234,13 +245,25 @@ void execute_cgi(int client, const char *path, const char *method, const char *q
 
 // 将文件发送给客户端
 void cat(int client, FILE *resource) {
-	char buf[1024];
-	fgets(buf, sizeof(buf), resource);
-	// 判断文件是否结束, 遇到NULL不会立即设置结束标记, 需要再getc一下
-	while (!feof(resource)) {
-		send(client, buf, strlen(buf), 0);
-		fgets(buf, sizeof(buf), resource);
+	int len = 0;
+	fseek(resource, 0, SEEK_END);
+	// 获取文件的字节数
+	len = ftell(resource);
+	char *buf = (char*)malloc(len+1);
+	fseek(resource, 0, SEEK_SET);
+	len = fread(buf, 1, len, resource);
+	send(client, buf, len, 0);
+/*
+	int now = 0;
+	while (now < len) {
+		int sz = 1024;
+		if (len - now < sz) sz = len - now;
+		int ok = send(client, buf+now, sz, 0);
+		printf("%d - %d\n", now, now+ok);
+		now += 1024;
 	}
+*/
+	free(buf);
 }
 
 // CGI脚本不能运行
@@ -249,7 +272,7 @@ void cannot_execute(int client) {
 	sprintf(buf, "HTTP/1.0 500 Internal Server Error\r\n");
 	send(client, buf, strlen(buf), 0);
 	sprintf(buf, "Content-type: text/html\r\n");
-	send(cliennt, buf, strlen(buf), 0);
+	send(client, buf, strlen(buf), 0);
 	sprintf(buf, "\r\n");
 	send(client, buf, strlen(buf), 0);
 	sprintf(buf, "<P>Error prohibited CGI execution.\r\n");
@@ -262,13 +285,13 @@ void bad_request(int client) {
 	sprintf(buf, "HTTP/1.0 400 BAD REQUEST\r\n");
 	send(client, buf, strlen(buf), 0);
 	sprintf(buf, "Content-type: text/html\r\n");
-	send(client, buf, strlen(buf, 0);
+	send(client, buf, strlen(buf), 0);
 	sprintf(buf, "\r\n");
 	send(client, buf, strlen(buf), 0);
 	sprintf(buf, "<P>Your browser sent a bad request, ");
 	send(client, buf, strlen(buf), 0);
 	sprintf(buf, "Such as a POST without a Content-Length.\r\n");
-	send(client, buf, sizeof(buf), 0);
+	send(client, buf, strlen(buf), 0);
 }
 
 // 打印错误信息
@@ -277,16 +300,158 @@ void error_die(const char *sc) {
 	exit(1);
 }
 
-// 
+// 从套接字中读取一行, 返回读取字符串的长度
+int get_line(int sock, char *buf, int size) {
+	int i = 0;
+	char c = '\0';
+	int n;
+	
+	while (i < size-1 && c != '\n') {
+		n = recv(sock, &c, 1, 0);
+		if (n > 0) {
+			if (c == '\r') {
+				// MSG_PEEK不取走c
+				n = recv(sock, &c, 1, MSG_PEEK);
+				if (n > 0 && c == '\n')
+					recv(sock, &c, 1, 0);
+				else c = '\n';
+			}
+			buf[i] = c;
+			++i;
+		}else {
+			c = '\n';
+		}
+	}
+	buf[i] = '\0';
+	return i;
+}
+
+// 获取MIME Type
+char *mime_type(const char *filename) {
+	char *str;
+	str = strrchr(filename, '.');
+	if (!strcmp(str, ".html") || !strcmp(str, ".htm")) 	return "text/html;charset=utf-8";
+	if (!strcmp(str, ".jpg") || !strcmp(str, ".jpeg"))	return "image/jpeg";
+	if (!strcmp(str, ".css"))	return "text/css";
+	if (!strcmp(str, ".gif"))	return "image/gif";
+	if (!strcmp(str, ".png"))	return "image/png";
+	if (!strcmp(str, ".wav"))	return "audio/wav";
+	if (!strcmp(str, ".au"))	return "audio/basic";
+	if (!strcmp(str, ".avi"))	return "audio/x-msvideo";
+	if (!strcmp(str, ".mp3"))	return "audio/mpeg";
+	return "text/plain";
+}
+
+// 返回响应行, 响应头.
+void headers(int client, const char *filename) {
+	char buf[1024];
+	strcpy(buf, "HTTP/1.0 200 OK\r\n");
+	send(client, buf, strlen(buf), 0);
+	strcpy(buf, SERVER_STRING);
+	send(client, buf, strlen(buf), 0);
+	sprintf(buf, "Content-Type: %s\r\n", mime_type(filename));
+	send(client, buf, strlen(buf), 0);
+	strcpy(buf, "\r\n"); // 空行
+	send(client, buf, strlen(buf), 0);
+}
+
+// 返回404 not found
+void not_found(int client) {
+	char buf[1024];
+	// 相应行
+	sprintf(buf, "HTTP/1.0 404 NOT FOUND\r\n");
+	// 响应头
+	send(client, buf, strlen(buf), 0);
+	sprintf(buf, SERVER_STRING);
+	send(client, buf, strlen(buf), 0);
+	sprintf(buf, "Content-Type: text/html\r\n");
+	send(client, buf, strlen(buf), 0);
+	// 空行
+	sprintf(buf, "\r\n");
+	send(client, buf, strlen(buf), 0);
+	// 响应体
+	sprintf(buf, "<HTML><TITLE>Not Found</TITLE>\r\n");
+	send(client, buf, strlen(buf), 0);
+	sprintf(buf, "<BODY><P>The server could not fulfill\r\n");
+	send(client, buf, strlen(buf), 0);
+	sprintf(buf, "your request because the resource specified\r\n");
+	send(client, buf, strlen(buf), 0);
+	sprintf(buf, "is unavailabe or nonexistent.\r\n");
+	send(client, buf, strlen(buf), 0);
+	sprintf(buf, "</BODY></HTML>\r\n");
+	send(client, buf, strlen(buf), 0);
+}
 
 
+// 发送一个文件给客户端, 调用cat函数发送响应体
+void serve_file(int client, const char *filename) {
+	// debug serve_file
+	printf("---------- serve_file: %s ----------\n", filename);
 
+	FILE *resource = NULL;
+	int numchars = 1;
+	char buf[1024];
 
+	buf[0] = 'A';
+	buf[1] = '\0';
+	// 忽略请求头
+	while (numchars > 0 && strcmp("\n", buf))
+		numchars = get_line(client, buf, sizeof(buf));
+	resource = fopen(filename, "r");
+	if (resource == NULL)	not_found(client);
+	else {
+		// 发送响应行,响应头
+		headers(client, filename);
+		// 发送响应体
+		// cat(client, filename);
+		cat(client, resource);
+	}
+	fclose(resource);
+}
 
+// 不支持的请求
+void unimplemented(int client) {
+	char buf[1024];
+	sprintf(buf, "HTTP/1.0 501 Method Not Implemented\r\n");
+	send(client, buf, strlen(buf), 0);
+	sprintf(buf, SERVER_STRING);
+	send(client, buf, strlen(buf), 0);
+	sprintf(buf, "Content-Type: text/html\r\n");
+	send(client, buf, strlen(buf), 0);
+	sprintf(buf, "\r\n");
+	send(client, buf, strlen(buf), 0);
+	sprintf(buf, "<HTML><HEAD><TITLE>Method Not Implemented\r\n");
+	send(client, buf, strlen(buf), 0);
+	sprintf(buf, "</TITLE></HEAD>\r\n");
+	send(client, buf, strlen(buf), 0);
+	sprintf(buf, "<BODY><P>HTTP request method not supported.\r\n");
+	send(client, buf, strlen(buf), 0);
+	sprintf(buf, "</BODY></HTML>\r\n");
+	send(client, buf, strlen(buf), 0);
+}
 
+int main(void) {
+	int server_sock = -1;
+	u_short port = 4000;
+	int client_sock = -1;
+	struct sockaddr_in client_name;
+	socklen_t client_name_len = sizeof(client_name);
+	pthread_t newthread;
 
+	server_sock = startup(&port);
+	printf("httpd running on port %d\n", port);
 
+	while (1) {
+		client_sock = accept(server_sock, (struct sockaddr *)&client_name, &client_name_len);
+		if (client_sock == -1) error_die("accept");
+		
+		printf("client: %s is connect!\n", inet_ntoa(client_name.sin_addr));
 
-
+		if (pthread_create(&newthread, NULL, (void*)accept_request, (void*)(intptr_t)client_sock) != 0)
+			perror("pthread_create");
+	}
+	close(server_sock);
+	return 0;
+}
 
 
