@@ -117,11 +117,42 @@ feof函数只用于检测流文件, 当文件内部位置指向文件结束时, 
 
 
 
+## 获取文件的总字节数
+
+```c
+FILE *fp = fopen("txt", "rb");
+fseek(fp, 0, SEEK_END);
+int len = ftell(fp); // 获取文件偏移量
+fseek(fp, 0, SEEK_SET);
+
+字节数: len
+```
+
+
+
+## 出错处理
+
+1. ![](assets/cgi_error.png)
+
+   运行CGI程序出错, 原因是在Windows下编写的.sh .py文件可能存在不可见字符, 行尾标记不同造成的.
+
+   解决方法:
+
+   ![](assets/cgi_fix.png)
+
+   其中^M的输入方法是先按CTRL + v, 然后松开v按m.
+
+   
+
+
+
 
 
 ## 参考文档
 
 [CGI详解](https://blog.csdn.net/LiuNian_SiYu/article/details/60964966)
+
+[**/usr/bin/python^M: bad interpreter: 没有那个文件或目录**](http://www.suiyiwen.com/question/4185)
 
 
 
