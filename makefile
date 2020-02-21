@@ -1,11 +1,9 @@
-all: httpd test
+all: httpd
 
 LIBS = -lpthread
 
 httpd: httpd.c
 	gcc -g -W -Wall -o $@ $< $(LIBS)
-test: test.c
-	gcc -g -W -Wall -o $@ $< 
 
 clean: 
-	rm httpd test
+	rm httpd

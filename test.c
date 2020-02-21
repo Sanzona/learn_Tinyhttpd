@@ -1,21 +1,20 @@
-#include <stdio.h>
-#include <string.h>
+#include <sys/types.h>
 #include <stdlib.h>
-#include <ctype.h>
+#include <stdio.h>
+#include <fcntl.h>
+#include <unistd.h>
+void tmp() {
+	printf("This is tmp\n");
+}
 
 int main() {
 
-	char s[100] = "asg/img/asd.jp";
-	char *now = s;
-	char *end = s + strlen(s);
-	while (now + 3 < end) {
-		if (now[0] == '/' && now[1] == 'i' &&
-		    now[2] == 'm' && now[3] == 'g') {
-				printf("pos: %d", (int)(now-s));
-				break;
-			}
-		now++;
-	}
-
+	int fd = open("log", O_CREAT|O_WRONLY|O_APPEND, 0644);
+	dup2(fd, STDERR_FILENO);
+	dup2(fd, STDOUT_FILENO);
+	printf("HELLO LIUHAO\n");
+	tmp();
+	perror("nihao");
+//	int a = 1 / 0;
 	return 0;
 }

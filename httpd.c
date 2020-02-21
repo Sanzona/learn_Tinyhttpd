@@ -12,8 +12,10 @@
 #include <sys/wait.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <fcntl.h>
 #include "httpd.h"
 
+char out[1224];
 // 设置服务端的套接字, bind, listen, 返回套接字
 int startup(u_short *port) {
 	int httpd = 0;
@@ -70,6 +72,10 @@ void accept_request(void *arg) {
 	char *query_string = NULL;
 	// 获取http的请求行
 	numchars = get_line(client, buf, sizeof(buf));
+
+	sprintf(out, "[INFO] 请求行: %s", buf);
+	write(STDOUT_FILENO, out, strlen(out));
+
 	i = 0, j = 0;
 	// 获取请求方法
 	while (!ISspace(buf[i]) && (i < sizeof(method) - 1)) {
@@ -80,7 +86,8 @@ void accept_request(void *arg) {
 	method[j] = '\0';
 	
 	// debug method 
-	printf("method: %s\n", method);
+	sprintf(out, "[INFO] accept_request method: %s\n", method);
+	write(STDOUT_FILENO, out, strlen(out));
 
 	// 不是GET或POST请求, 返回无效请求
 	// strcasecmp忽略大小写
@@ -104,7 +111,8 @@ void accept_request(void *arg) {
 	url[i] = '\0';
 
 	// debug url
-	printf("url: %s\n", url);
+	sprintf(out, "[INFO] url: %s\n", url);
+	write(STDOUT_FILENO, out, strlen(out));
 
 	// GET请求, 判断是否带有参数
 	if (strcasecmp(method, "GET") == 0) {
@@ -123,7 +131,8 @@ void accept_request(void *arg) {
 		strcat(path, "index.html");
 
 	// debug path
-	printf("path: %s\n", path);
+	sprintf(out, "[INFO] path: %s\n", path);
+	write(STDOUT_FILENO, out, strlen(out));
 
 	// 获取文件信息失败
 	if (stat(path, &st) == -1) {
@@ -183,7 +192,8 @@ void execute_cgi(int client, const char *path, const char *method, const char *q
 			return;
 		}
 	}else { // 其他请求方法
-		
+		sprintf(out, "[INFO] Other Method: %s\n", method);
+		write(STDOUT_FILENO, out, strlen(out));
 	}
 
 	// 创建管道
@@ -386,7 +396,7 @@ void not_found(int client) {
 // 发送一个文件给客户端, 调用cat函数发送响应体
 void serve_file(int client, const char *filename) {
 	// debug serve_file
-	printf("---------- serve_file: %s ----------\n", filename);
+	sprintf(out, "[INFO] serve_file: send %s to client\n", filename);
 
 	FILE *resource = NULL;
 	int numchars = 1;
@@ -403,7 +413,6 @@ void serve_file(int client, const char *filename) {
 		// 发送响应行,响应头
 		headers(client, filename);
 		// 发送响应体
-		// cat(client, filename);
 		cat(client, resource);
 	}
 	fclose(resource);
@@ -431,6 +440,12 @@ void unimplemented(int client) {
 }
 
 int main(void) {
+	int log = open("log", O_WRONLY|O_CREAT|O_APPEND, 0644);
+	if (log == -1) error_die("open log");
+	// dup2(log, 1);
+	// dup2(log, 2);
+	dup2(log, STDOUT_FILENO);
+	dup2(log, STDERR_FILENO);
 	int server_sock = -1;
 	u_short port = 4000;
 	int client_sock = -1;
@@ -439,13 +454,15 @@ int main(void) {
 	pthread_t newthread;
 
 	server_sock = startup(&port);
-	printf("httpd running on port %d\n", port);
-
+	sprintf(out, "[INFO] httpd running on port %d\n", port);
+	write(STDOUT_FILENO, out, strlen(out));
+	fflush(stdout);
 	while (1) {
 		client_sock = accept(server_sock, (struct sockaddr *)&client_name, &client_name_len);
 		if (client_sock == -1) error_die("accept");
 		
-		printf("client: %s is connect!\n", inet_ntoa(client_name.sin_addr));
+		sprintf(out, "[INFO] client: %s is connect!\n", inet_ntoa(client_name.sin_addr));
+		write(STDOUT_FILENO, out, strlen(out));
 
 		if (pthread_create(&newthread, NULL, (void*)accept_request, (void*)(intptr_t)client_sock) != 0)
 			perror("pthread_create");
@@ -453,5 +470,3 @@ int main(void) {
 	close(server_sock);
 	return 0;
 }
-
-
