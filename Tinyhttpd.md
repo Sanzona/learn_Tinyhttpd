@@ -89,8 +89,6 @@ CGI程序继承了系统的环境变量。CGI环境变量在CGI程序启动初�
 
 
 
-
-
 ## 判断文件结束标记EOF
 
 本函数在void cat(int client, FILE *resource)出现
@@ -130,6 +128,77 @@ fseek(fp, 0, SEEK_SET);
 
 
 
+## int, size_t, ssize_t
+
+size_t无符号数用来表示对象的大小, 在不同的操作系统的长度不同
+
+32位架构中 ```typedef unsigned int size_t```
+
+64位架构中```typedef unsigned long size_t```
+
+ssize_t有符号整型, 32位等同int, 64位等同long int
+
+size_t一般用来计数(sizeof)
+
+ssize_t用来表示被执行读写操作的数据块的大小
+
+
+
+### 缓冲区
+
+- 全缓冲
+
+  - 缓冲区满输出
+  - 程序结束输出
+  - 刷新缓冲区输出(fflush(stdout))
+
+- 行缓冲
+
+  - \n输出
+  - 缓冲区满输出
+  - 程序结束输出
+  - 刷新缓冲区输出
+
+  标准输入, 标准输出都是行缓冲
+
+- 不缓冲
+
+  - 直接输出
+
+  write, 标准出错等
+
+
+
+```c
+#include <sys/types.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <fcntl.h>
+#include <unistd.h>
+/* 	int setvbuf(FILE *stream, char *buffer, int mode, size_t size)
+	stream 	指向FILE对象
+	buffer 	用户分配的缓冲
+	mode   	指定文件缓冲模式
+		_IOFBF 全缓冲
+		_IOLBF 行缓冲
+		_IONBF 无缓冲
+	size   	缓冲区大小
+*/
+int main() {
+
+	char buf[5] = "hell";
+	setvbuf(stdout, buf, _IONBF, sizeof(buf));
+	while (1) {
+		sleep(1);
+		printf("%s", buf);
+	}
+
+	return 0;
+}
+```
+
+
+
 ## 出错处理
 
 1. ![](assets/cgi_error.png)
@@ -144,13 +213,23 @@ fseek(fp, 0, SEEK_SET);
 
    
 
+2. dup2重定向输出, 标准库函数printf变为全缓冲
 
+   - 改用write函数
+
+     printf是行缓冲, write没有缓冲区直接输出.
+
+   - 每次printf之后fllush(stout)刷新缓冲区
+
+   - 
 
 
 
 ## 参考文档
 
 [CGI详解](https://blog.csdn.net/LiuNian_SiYu/article/details/60964966)
+
+[Python CGI编程](https://www.runoob.com/python/python-cgi.html)
 
 [**/usr/bin/python^M: bad interpreter: 没有那个文件或目录**](http://www.suiyiwen.com/question/4185)
 
