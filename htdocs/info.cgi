@@ -4,7 +4,7 @@ import sys, os, cgi, datetime
 import traceback, logging
 
 length = os.getenv('CONTENT_LENGTH')
-logging.basicConfig(filename='/root/work/learn_Tinyhttpd/htdocs/cgi.log')
+logging.basicConfig(filename='htdocs/cgi.log')
 
 def solve():
 	# 获取系统时间
@@ -19,7 +19,7 @@ def solve():
 	# 保存到对应文件
 	out = num + "\n" + name + "\n" + sex + "\n" + re + "\n" + virus + "\n\n"
 	filename = formdata['num'].value + '-' + formdata['name'].value;
-	fp = open('/root/work/learn_Tinyhttpd/htdocs/info/'+filename, 'a')
+	fp = open('htdocs/info/'+filename, 'a')
 	fp.write(date + "\n")
 	fp.write(out)
 
@@ -51,3 +51,13 @@ if __name__ == '__main__':
 	except:
 		s = traceback.format_exc()
 		logging.error(s)
+		print "Content-type: text/html;charset=utf-8"
+		print ""
+		print "<html>"
+		print "<head>"
+		print "<title>Your INFO</title>"
+		print "</head>"
+		print '<body>'
+		print "<h1>输入信息不完整！</h1>"
+		print '</body>'
+		print '</html>'
