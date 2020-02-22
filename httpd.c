@@ -218,8 +218,8 @@ void execute_cgi(int client, const char *path, const char *method, const char *q
 		char query_env[255];
 		char length_env[255];
 
-		dup2(cgi_output[1], STDOUT);
-		dup2(cgi_input[0], STDIN);
+		dup2(cgi_output[1], STDOUT_FILENO);
+		dup2(cgi_input[0], STDIN_FILENO);
 		close(cgi_output[0]);
 		close(cgi_input[1]);
 		// 设置REQUEST_METHOD变量
