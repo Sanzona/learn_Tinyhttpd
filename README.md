@@ -22,7 +22,7 @@ make
 
 
 
-### 本地测试
+### 命令行测试
 
 ![](assets/headers.png)
 
@@ -48,3 +48,5 @@ make
 
 ![](assets/info.png)
 
+
+部署到服务器, 需要开启端口4000
