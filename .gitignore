@@ -1,0 +1,5 @@
+log
+httpd
+htdocs/cgi.log
+htdocs/info/*
+!**htdocs/info/171025-Sanzo
