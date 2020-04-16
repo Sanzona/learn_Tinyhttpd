@@ -15,14 +15,14 @@
 #include <fcntl.h>
 #include "httpd.h"
 
-char out[1224];
+char out[1224]; // 日志输出缓冲区
 // 设置服务端的套接字, bind, listen, 返回套接字
 int startup(u_short *port) {
 	int httpd = 0;
 	int on = 1;
 	struct sockaddr_in name;
 
-	httpd = socket(PF_INET, SOCK_STREAM, 0);
+	httpd = socket(PF_INET, SOCK_STREAM, 0); // 创建服务端套接字
 	if (httpd == -1) error_die("socket");
 	memset(&name, 0, sizeof(name));
 	name.sin_family = AF_INET;
@@ -38,20 +38,20 @@ int startup(u_short *port) {
 	 *		IPPROTO_TCP: TCP选项
 	 *	optname: 需要访问的选项名
 	 */
-	if (setsockopt(httpd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) < 0) {
+	if (setsockopt(httpd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) < 0) { // 端口复用
 		error_die("setsockopt failed");
 	}
-	if (bind(httpd, (struct sockaddr *)&name, sizeof(name)) < 0) {
+	if (bind(httpd, (struct sockaddr *)&name, sizeof(name)) < 0) { // 端口绑定
 		error_die("bind");
 	}
-	if (*port == 0) {
+	if (*port == 0) { // 获取分配的端口
 		socklen_t namelen = sizeof(name);
 		if (getsockname(httpd, (struct sockaddr *)&name, &namelen) == -1) {
 			error_die("getsockname");
 		}
 		*port = ntohs(name.sin_port);
 	}
-	if (listen(httpd, 5) < 0) {
+	if (listen(httpd, 5) < 0) { // 设置等待连接队列长度
 		error_die("listen");
 	}
 	return httpd;
@@ -59,6 +59,9 @@ int startup(u_short *port) {
 
 // 处理http请求
 void accept_request(void *arg) {
+	// 线程分离
+	pthread_detach(pthread_self());
+
 	int client = (intptr_t)arg;
 	char buf[1024];
 	size_t numchars;
@@ -73,6 +76,7 @@ void accept_request(void *arg) {
 	// 获取http的请求行
 	numchars = get_line(client, buf, sizeof(buf));
 
+	// debug
 	sprintf(out, "[INFO] 请求行: %s", buf);
 	write(STDOUT_FILENO, out, strlen(out));
 
@@ -96,9 +100,8 @@ void accept_request(void *arg) {
 		return;
 	}
 
-	if (strcasecmp(method, "POST") == 0) {
-		cgi = 1;
-	}
+	// 需要执行cgi程序
+	if (strcasecmp(method, "POST") == 0) cgi = 1;
 
 	i = 0;
 	// 读取空格
@@ -147,15 +150,23 @@ void accept_request(void *arg) {
 		if ((st.st_mode & S_IFMT) == S_IFDIR)
 			strcat(path, "/index.html");
 		// 该文件具有执行权限
-		if ((st.st_mode & S_IXUSR) ||
-			(st.st_mode & S_IXGRP) ||
-			(st.st_mode & S_IXOTH) )
+		if ((st.st_mode & S_IXUSR) || (st.st_mode & S_IXGRP) || (st.st_mode & S_IXOTH))
 			cgi = 1;
 		// 非cgi, 把对应请求的文件发给客户端
-		if (!cgi) serve_file(client, path);
-		else execute_cgi(client, path, method, query_string);
+		if (!cgi) {
+			serve_file(client, path);
+			// debug path
+			sprintf(out, "[INFO] send file %s to client\n\n", path);
+			write(STDOUT_FILENO, out, strlen(out));
+		} else {
+			execute_cgi(client, path, method, query_string);
+			// debug path
+			sprintf(out, "[INFO] server execute %s\n\n", path);
+			write(STDOUT_FILENO, out, strlen(out));
+		}
 	}
 	close(client);
+	pthread_exit(NULL);
 }
 
 // 执行CGI脚本, 执行结果通过STDOUT重定向到父进程, 父进程发给客户端
@@ -173,11 +184,12 @@ void execute_cgi(int client, const char *path, const char *method, const char *q
 
 	buf[0] = 'A';
 	buf[1] = '\0';
-	if (strcasecmp(method, "GET") == 0)
+	if (strcasecmp(method, "GET") == 0) {
 		// 忽略请求头
 		while (numchars > 0 && strcmp("\n", buf))
 			numchars = get_line(client, buf, sizeof(buf));
-	else if (strcasecmp(method, "POST") == 0) {
+
+	} else if (strcasecmp(method, "POST") == 0) {
 		numchars = get_line(client, buf, sizeof(buf));
 		while (numchars > 0 && strcmp("\n", buf)) {
 			buf[15] = '\0';
@@ -210,18 +222,19 @@ void execute_cgi(int client, const char *path, const char *method, const char *q
 		cannot_execute(client);
 		return;
 	}
-	// 响应头
+	// 响应行
 	sprintf(buf, "HTTP/1.0 200 OK\r\n");
 	send(client, buf, strlen(buf), 0);
-	if (pid == 0) {
+	if (pid == 0) { // 子进程
 		char meth_env[255];
 		char query_env[255];
 		char length_env[255];
-
-		dup2(cgi_output[1], STDOUT_FILENO);
+		// 重定向文件描述符
 		dup2(cgi_input[0], STDIN_FILENO);
+		dup2(cgi_output[1], STDOUT_FILENO);
 		close(cgi_output[0]);
 		close(cgi_input[1]);
+
 		// 设置REQUEST_METHOD变量
 		sprintf(meth_env, "REQUEST_METHOD=%s", method);
 		putenv(meth_env);
@@ -234,9 +247,9 @@ void execute_cgi(int client, const char *path, const char *method, const char *q
 		}
 		execl(path, path, NULL);
 		exit(0);
-	} else {
-		close(cgi_output[1]);
+	} else { // 父进程
 		close(cgi_input[0]);
+		close(cgi_output[1]);
 		if (strcasecmp(method, "POST") == 0) {
 			for (i = 0; i < content_length; ++i) {
 				recv(client, &c, 1, 0);
@@ -244,12 +257,14 @@ void execute_cgi(int client, const char *path, const char *method, const char *q
 			}
 		}
 		// 将CGI执行结果返回给客户端
+		// CGI执行结果包括相应行, 空行, 响应体
 		while (read(cgi_output[0], &c, 1) > 0) {
 			send(client, &c, 1, 0);
 		}
 		close(cgi_output[0]);
 		close(cgi_input[1]);
-		waitpid(pid, &status, 0);
+		// pid_t waitpid(pid_t pid, int *status, int options);
+		waitpid(pid, &status, 0); // 同wait(), 阻塞等待父进程
 	}
 }
 
@@ -276,32 +291,29 @@ void cat(int client, FILE *resource) {
 	free(buf);
 }
 
-// CGI脚本不能运行
-void cannot_execute(int client) {
-	char buf[1024];
-	sprintf(buf, "HTTP/1.0 500 Internal Server Error\r\n");
-	send(client, buf, strlen(buf), 0);
-	sprintf(buf, "Content-type: text/html\r\n");
-	send(client, buf, strlen(buf), 0);
-	sprintf(buf, "\r\n");
-	send(client, buf, strlen(buf), 0);
-	sprintf(buf, "<P>Error prohibited CGI execution.\r\n");
-	send(client, buf, strlen(buf), 0);
-}
+// 发送一个文件给客户端, 调用cat函数发送响应体
+void serve_file(int client, const char *filename) {
+	// debug serve_file
+	sprintf(out, "[INFO] serve_file: send %s to client\n", filename);
 
-// 客户端错误请求
-void bad_request(int client) {
+	FILE *resource = NULL;
+	int numchars = 1;
 	char buf[1024];
-	sprintf(buf, "HTTP/1.0 400 BAD REQUEST\r\n");
-	send(client, buf, strlen(buf), 0);
-	sprintf(buf, "Content-type: text/html\r\n");
-	send(client, buf, strlen(buf), 0);
-	sprintf(buf, "\r\n");
-	send(client, buf, strlen(buf), 0);
-	sprintf(buf, "<P>Your browser sent a bad request, ");
-	send(client, buf, strlen(buf), 0);
-	sprintf(buf, "Such as a POST without a Content-Length.\r\n");
-	send(client, buf, strlen(buf), 0);
+
+	buf[0] = 'A';
+	buf[1] = '\0';
+	// 忽略请求头
+	while (numchars > 0 && strcmp("\n", buf))
+		numchars = get_line(client, buf, sizeof(buf));
+	resource = fopen(filename, "r");
+	if (resource == NULL)	not_found(client);
+	else {
+		// 发送响应行,响应头
+		headers(client, filename);
+		// 发送响应体
+		cat(client, resource);
+	}
+	fclose(resource);
 }
 
 // 打印错误信息
@@ -326,8 +338,7 @@ int get_line(int sock, char *buf, int size) {
 					recv(sock, &c, 1, 0);
 				else c = '\n';
 			}
-			buf[i] = c;
-			++i;
+			buf[i++] = c;
 		}else {
 			c = '\n';
 		}
@@ -337,6 +348,7 @@ int get_line(int sock, char *buf, int size) {
 }
 
 // 获取MIME Type
+// 浏览器通常使用MIME类型（而不是文件扩展名）来确定如何处理URL，因此Web服务器在响应头中添加正确的MIME类型非常重要。如果配置不正确，浏览器可能会曲解文件内容，网站将无法正常工作，并且下载的文件也会被错误处理。
 char *mime_type(const char *filename) {
 	char *str;
 	str = strrchr(filename, '.');
@@ -392,30 +404,32 @@ void not_found(int client) {
 	send(client, buf, strlen(buf), 0);
 }
 
-
-// 发送一个文件给客户端, 调用cat函数发送响应体
-void serve_file(int client, const char *filename) {
-	// debug serve_file
-	sprintf(out, "[INFO] serve_file: send %s to client\n", filename);
-
-	FILE *resource = NULL;
-	int numchars = 1;
+// CGI脚本不能运行
+void cannot_execute(int client) {
 	char buf[1024];
+	sprintf(buf, "HTTP/1.0 500 Internal Server Error\r\n");
+	send(client, buf, strlen(buf), 0);
+	sprintf(buf, "Content-type: text/html\r\n");
+	send(client, buf, strlen(buf), 0);
+	sprintf(buf, "\r\n");
+	send(client, buf, strlen(buf), 0);
+	sprintf(buf, "<P>Error prohibited CGI execution.\r\n");
+	send(client, buf, strlen(buf), 0);
+}
 
-	buf[0] = 'A';
-	buf[1] = '\0';
-	// 忽略请求头
-	while (numchars > 0 && strcmp("\n", buf))
-		numchars = get_line(client, buf, sizeof(buf));
-	resource = fopen(filename, "r");
-	if (resource == NULL)	not_found(client);
-	else {
-		// 发送响应行,响应头
-		headers(client, filename);
-		// 发送响应体
-		cat(client, resource);
-	}
-	fclose(resource);
+// 客户端错误请求
+void bad_request(int client) {
+	char buf[1024];
+	sprintf(buf, "HTTP/1.0 400 BAD REQUEST\r\n");
+	send(client, buf, strlen(buf), 0);
+	sprintf(buf, "Content-type: text/html\r\n");
+	send(client, buf, strlen(buf), 0);
+	sprintf(buf, "\r\n");
+	send(client, buf, strlen(buf), 0);
+	sprintf(buf, "<P>Your browser sent a bad request, ");
+	send(client, buf, strlen(buf), 0);
+	sprintf(buf, "Such as a POST without a Content-Length.\r\n");
+	send(client, buf, strlen(buf), 0);
 }
 
 // 不支持的请求
@@ -440,12 +454,11 @@ void unimplemented(int client) {
 }
 
 int main(void) {
-	int log = open("log", O_WRONLY|O_CREAT|O_APPEND, 0644);
-	if (log == -1) error_die("open log");
-	// dup2(log, 1);
-	// dup2(log, 2);
-	dup2(log, STDOUT_FILENO);
-	dup2(log, STDERR_FILENO);
+	// int log = open("log", O_WRONLY|O_CREAT|O_APPEND, 0644);
+	// if (log == -1) error_die("open log");
+	// dup2(log, STDOUT_FILENO);
+	// dup2(log, STDERR_FILENO);
+
 	int server_sock = -1;
 	u_short port = 4000;
 	int client_sock = -1;
@@ -456,7 +469,7 @@ int main(void) {
 	server_sock = startup(&port);
 	sprintf(out, "[INFO] httpd running on port %d\n", port);
 	write(STDOUT_FILENO, out, strlen(out));
-	fflush(stdout);
+	int threadNum = 0;
 	while (1) {
 		client_sock = accept(server_sock, (struct sockaddr *)&client_name, &client_name_len);
 		if (client_sock == -1) error_die("accept");
@@ -464,8 +477,12 @@ int main(void) {
 		sprintf(out, "[INFO] client: %s is connect!\n", inet_ntoa(client_name.sin_addr));
 		write(STDOUT_FILENO, out, strlen(out));
 
+		// 一个连接一个线程
+		// intptr_t是为了跨平台，其长度总是所在平台的位数，所以用来存放地址。
 		if (pthread_create(&newthread, NULL, (void*)accept_request, (void*)(intptr_t)client_sock) != 0)
 			perror("pthread_create");
+		sprintf(out, "[INFO] %d's thread is created\n", threadNum++);
+		write(STDOUT_FILENO, out, strlen(out));
 	}
 	close(server_sock);
 	return 0;
